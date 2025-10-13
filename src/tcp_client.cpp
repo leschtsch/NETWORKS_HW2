@@ -1,51 +1,96 @@
 #include <arpa/inet.h>
-#include <array>
 #include <cassert>
 #include <cerrno>
 #include <cstdlib>
 #include <iostream>
 #include <string>
 #include <sys/socket.h>
+#include <vector>
 
 static constexpr in_port_t kPort = 8080;
 static constexpr std::size_t kBuffSize = 1LLU << 16LLU;
 
 namespace {
 
-void WaitOnce() {
-  std::string str;
-  std::getline(std::cin, str);
-}
-
-bool DoClient(int sockfd) {
-  static std::array<char, kBuffSize> buff = {};
-  buff.fill(57);
-
-  ssize_t msg_size = 1 + static_cast<ssize_t>(rand() % kBuffSize);
-  std::cout << "send " << msg_size << " bytes\n";
-
-  if (send(sockfd, buff.data(), msg_size, 0) < 0) {
-    perror("send");
+int GetBufsize(int sockfd) {
+  int res = 0;
+  int cur_buf = 0;
+  unsigned int mlen = sizeof(cur_buf);
+  if (getsockopt(sockfd,
+                 SOL_SOCKET,
+                 SO_RCVBUF,
+                 reinterpret_cast<void*>(&cur_buf),
+                 &mlen) < 0) {
+    perror("getsockopt");
+    std::exit(-1);
+  }
+  res = cur_buf;
+  if (getsockopt(sockfd,
+                 SOL_SOCKET,
+                 SO_SNDBUF,
+                 reinterpret_cast<void*>(&cur_buf),
+                 &mlen) < 0) {
+    perror("getsockopt");
     std::exit(-1);
   }
 
-  ssize_t bytes_read = recv(sockfd, buff.data(), kBuffSize, 0);
-  std::cout << "recv " << bytes_read << " bytes\n";
+  res = std::min(res, cur_buf);
 
-  if (bytes_read < 0) {
-    perror("recv");
+  return res;
+}
+
+bool DoClient(int sockfd) {
+  int bufsiz = GetBufsize(sockfd);
+
+  std::string msg;
+  if (!(std::cin >> msg)) {
     return false;
   }
 
-  assert(bytes_read == msg_size);
+  static std::vector<char> buff;
+  buff.clear();
+  buff.resize(msg.size());
 
-  for (ssize_t i = 0; i < bytes_read; ++i) {
-    assert((buff[i] ^ static_cast<char>(179)) == 57);
+  int msg_size = htonl(msg.size());
+
+  if (send(sockfd, &msg_size, sizeof(msg_size), 0) < 0) {
+    perror("send");
+    std::exit(-1);
+  }
+  msg_size = ntohl(msg_size);
+
+  std::cout << "send " << msg.size() << " bytes\n";
+  int already_sent = 0;
+  while (already_sent < msg_size) {
+    int need_send = std::min(msg_size - already_sent, bufsiz);
+    if (send(sockfd, msg.data() + already_sent, need_send, 0) < 0) {
+      perror("send");
+      std::exit(-1);
+    }
+
+    already_sent += need_send;
+  }
+
+  int already_read = 0;
+
+  while (already_read < msg_size) {
+    int need_read = std::min(msg_size - already_read, bufsiz);
+    ssize_t bytes_read = recv(sockfd, buff.data() + already_read, need_read, 0);
+    if (bytes_read < need_read) {
+      perror("recv");
+      std::exit(-1);
+    }
+
+    already_read += static_cast<int>(bytes_read);
+  }
+  std::cout << "recv " << already_read << " bytes\n";
+
+  for (ssize_t i = 0; i < already_read; ++i) {
+    assert((buff[i] ^ static_cast<char>(179)) == msg[i]);
   }
 
   return true;
 }
-}  // namespace
 
 int Connect() {
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -90,18 +135,10 @@ int Connect() {
 
   return sockfd;
 }
+}  // namespace
 
 int main() {
   int sockfd = Connect();
 
-  while (true) {
-    WaitOnce();
-
-    if (!DoClient(sockfd)) {
-      std::cout << "bad(\n";
-      std::exit(-1);
-    } else {
-      std::cout << "OK\n";
-    }
-  }
+  while (DoClient(sockfd)) {}
 }

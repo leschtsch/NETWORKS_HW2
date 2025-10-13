@@ -1,42 +1,109 @@
 #include <arpa/inet.h>
-#include <array>
 #include <cerrno>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <vector>
 
 static constexpr in_port_t kPort = 8080;
-static constexpr std::size_t kBuffSize = 1LLU << 16LLU;
 
 namespace {
-void DoServer(int sockfd) {
-  std::array<char, kBuffSize> buff = {};
+int GetBufsize(int sockfd) {
+  int res = 0;
+  int cur_buf = 0;
+  unsigned int mlen = sizeof(cur_buf);
+  if (getsockopt(sockfd,
+                 SOL_SOCKET,
+                 SO_RCVBUF,
+                 reinterpret_cast<void*>(&cur_buf),
+                 &mlen) < 0) {
+    perror("getsockopt");
+    std::exit(-1);
+  }
+  res = cur_buf;
+  if (getsockopt(sockfd,
+                 SOL_SOCKET,
+                 SO_SNDBUF,
+                 reinterpret_cast<void*>(&cur_buf),
+                 &mlen) < 0) {
+    perror("getsockopt");
+    std::exit(-1);
+  }
 
-  while (true) {
-    ssize_t bytes_read = recv(sockfd, buff.data(), kBuffSize, 0);
+  res = std::min(res, cur_buf);
 
-    if (bytes_read < 0) {
-      perror("recv");
-      return;
-    }
-    if (bytes_read == 0) {
+  return res;
+}
+
+bool ServerOneMsg(int sockfd, int bufsiz) {
+  int msg_size = 0;
+  ssize_t bytes_read = recv(sockfd, &msg_size, sizeof(msg_size), 0);
+  msg_size = ntohl(msg_size);
+
+  static std::vector<char> buff;
+  buff.clear();
+  buff.resize(msg_size);
+
+  if (bytes_read < 0) {
+    perror("recv");
+    return false;
+  }
+  if (bytes_read == 0) {
+    std::cout << "client left\n";
+    return false;
+  }
+
+  int already_read = 0;
+
+  while (already_read < msg_size) {
+    int need_read = std::min(msg_size - already_read, bufsiz);
+    bytes_read = recv(sockfd, buff.data() + already_read, need_read, 0);
+    if (bytes_read < need_read) {
       std::cout << "client left\n";
-      break;
+      return false;
     }
 
-    std::cout << "recv " << bytes_read << " bytes\n";
+    already_read += static_cast<int>(bytes_read);
+  }
 
-    for (ssize_t i = 0; i < bytes_read; ++i) {
-      buff[i] ^= static_cast<char>(179);
-    }
+  std::cout << "recv " << already_read << " bytes\n";
 
-    std::cout << "send " << bytes_read << "bytes\n";
-    if (send(sockfd, buff.data(), bytes_read, 0) < 0) {
+  for (ssize_t i = 0; i < already_read; ++i) {
+    buff[i] ^= static_cast<char>(179);
+  }
+
+  std::cout << "send " << already_read << "bytes\n";
+
+  int already_sent = 0;
+  while (already_sent < msg_size) {
+    int need_send = std::min(msg_size - already_sent, bufsiz);
+    if (send(sockfd, buff.data() + already_sent, need_send, 0) < 0) {
       perror("send");
       std::exit(-1);
     }
+
+    already_sent += need_send;
   }
+
+  return true;
+}
+
+void DoServer(int sockfd) {
+  int bufsiz = GetBufsize(sockfd);
+
+  /*
+  if (send(sockfd, buff.data(), 13, 0) < 0) {
+    perror("send");
+    std::exit(-1);
+  }
+
+  Здесь можно было бы что-то отправить, если бы клиент не ожидал определенный
+  ответ.
+  */
+
+  while (ServerOneMsg(sockfd, bufsiz)) {}
 
   if (close(sockfd) < 0) {
     perror("close");

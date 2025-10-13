@@ -12,22 +12,24 @@ static constexpr std::size_t kBuffSize = 1LLU << 16LLU;
 
 namespace {
 
-void WaitOnce() {
-  std::string str;
-  std::getline(std::cin, str);
-}
-
 bool DoClient(int sockfd, struct sockaddr_in& server_addr) {
-  static std::array<char, kBuffSize> buff = {};
-  buff.fill(57);
+  std::string msg;
+  if (!(std::cin >> msg)) {
+    return false;
+  }
 
-  ssize_t msg_size = 1 + static_cast<ssize_t>(rand() % kBuffSize);
-  std::cout << "send " << msg_size << " bytes\n";
+  if (msg.size() > kBuffSize) {
+    msg.resize(kBuffSize);
+  }
+
+  static std::array<char, kBuffSize> buff = {};
+
+  std::cout << "send " << msg.size() << " bytes\n";
 
   socklen_t len = sizeof(server_addr);
   if (sendto(sockfd,
-             buff.data(),
-             msg_size,
+             msg.data(),
+             msg.size(),
              0,
              reinterpret_cast<const struct sockaddr*>(&server_addr),
              len) < 0) {
@@ -49,10 +51,10 @@ bool DoClient(int sockfd, struct sockaddr_in& server_addr) {
     return false;
   }
 
-  assert(bytes_read == msg_size);
+  assert(static_cast<std::size_t>(bytes_read) == msg.size());
 
   for (ssize_t i = 0; i < bytes_read; ++i) {
-    assert((buff[i] ^ static_cast<char>(179)) == 57);
+    assert((buff[i] ^ static_cast<char>(179)) == msg[i]);
   }
 
   return true;
@@ -93,14 +95,5 @@ int main() {
     std::exit(-1);
   }
 
-  while (true) {
-    WaitOnce();
-
-    if (!DoClient(sockfd, server_addr)) {
-      std::cout << "bad(\n";
-      std::exit(-1);
-    } else {
-      std::cout << "OK\n";
-    }
-  }
+  while (DoClient(sockfd, server_addr)) {}
 }
