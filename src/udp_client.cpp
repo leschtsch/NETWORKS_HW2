@@ -4,20 +4,18 @@
 #include <cerrno>
 #include <cstdlib>
 #include <iostream>
-#include <sys/socket.h>
 #include <string>
+#include <sys/socket.h>
 
 static constexpr in_port_t kPort = 8080;
 static constexpr std::size_t kBuffSize = 1LLU << 16LLU;
 
 namespace {
 
-void WaitOnce()
-{
+void WaitOnce() {
   std::string str;
   std::getline(std::cin, str);
 }
-
 
 bool DoClient(int sockfd, struct sockaddr_in& server_addr) {
   static std::array<char, kBuffSize> buff = {};
@@ -27,18 +25,21 @@ bool DoClient(int sockfd, struct sockaddr_in& server_addr) {
   std::cout << "send " << msg_size << " bytes\n";
 
   socklen_t len = sizeof(server_addr);
-  sendto(sockfd,
-         buff.data(),
-         msg_size,
-         MSG_CONFIRM,
-         reinterpret_cast<const struct sockaddr*>(&server_addr),
-         len);
+  if (sendto(sockfd,
+             buff.data(),
+             msg_size,
+             0,
+             reinterpret_cast<const struct sockaddr*>(&server_addr),
+             len) < 0) {
+    perror("send");
+    std::exit(-1);
+  }
 
   ssize_t bytes_read =
       recvfrom(sockfd,
                buff.data(),
                kBuffSize,
-               MSG_WAITALL,
+               0,
                reinterpret_cast<struct sockaddr*>(&server_addr),
                &len);
   std::cout << "recv " << bytes_read << " bytes\n";
@@ -68,7 +69,7 @@ int main() {
 
   struct sockaddr_in client_addr{};
   client_addr.sin_family = AF_INET;
-  client_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  client_addr.sin_addr.s_addr = INADDR_ANY;
   client_addr.sin_port = 0;
 
   struct timeval timeval;

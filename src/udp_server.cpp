@@ -19,14 +19,14 @@ void DoServer(int sockfd) {
       recvfrom(sockfd,
                buff.data(),
                kBuffSize,
-               MSG_WAITALL,
+               0,
                reinterpret_cast<struct sockaddr*>(&client_addr),
                &len);
   std::cout << "recv " << bytes_read << " bytes\n";
 
   if (bytes_read < 0) {
     perror("recv");
-    return; 
+    return;
   }
 
   for (ssize_t i = 0; i < bytes_read; ++i) {
@@ -34,12 +34,15 @@ void DoServer(int sockfd) {
   }
 
   std::cout << "send " << bytes_read << "bytes\n";
-  sendto(sockfd,
-         buff.data(),
-         bytes_read,
-         MSG_CONFIRM,
-         reinterpret_cast<const struct sockaddr*>(&client_addr),
-         len);
+  if (sendto(sockfd,
+             buff.data(),
+             bytes_read,
+             0,
+             reinterpret_cast<const struct sockaddr*>(&client_addr),
+             len) < 0) {
+    perror("send");
+    std::exit(-1);
+  }
 }
 }  // namespace
 
