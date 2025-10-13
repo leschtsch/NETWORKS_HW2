@@ -13,7 +13,7 @@ static constexpr std::size_t kBuffSize = 1LLU << 16LLU;
 namespace {
 
 int GetBufsize(int sockfd) {
-  int res = 0;
+  int res = 512;
   int cur_buf = 0;
   unsigned int mlen = sizeof(cur_buf);
   if (getsockopt(sockfd,
@@ -24,7 +24,7 @@ int GetBufsize(int sockfd) {
     perror("getsockopt");
     std::exit(-1);
   }
-  res = cur_buf;
+  res = std::min(res, cur_buf);
   if (getsockopt(sockfd,
                  SOL_SOCKET,
                  SO_SNDBUF,
