@@ -6,7 +6,7 @@
 #include <sys/socket.h>
 
 static constexpr in_port_t kPort = 8080;
-static constexpr std::size_t kBuffSize = 1LLU << 8LLU; // smaller than 508
+static constexpr std::size_t kBuffSize = 1LLU << 16LLU;
 
 namespace {
 void DoServer(int sockfd) {
@@ -54,7 +54,7 @@ int main() {
   struct sockaddr_in server_addr{};
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = kPort;
+  server_addr.sin_port = htons(kPort);
 
   if (bind(sockfd,
            reinterpret_cast<const struct sockaddr*>(&server_addr),

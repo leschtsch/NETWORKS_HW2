@@ -8,7 +8,7 @@
 #include <string>
 
 static constexpr in_port_t kPort = 8080;
-static constexpr std::size_t kBuffSize = 1LLU << 8LLU;  // smaller than 508
+static constexpr std::size_t kBuffSize = 1LLU << 16LLU;
 
 namespace {
 
@@ -83,7 +83,7 @@ int main() {
   struct sockaddr_in server_addr{};
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  server_addr.sin_port = kPort;
+  server_addr.sin_port = htons(kPort);
 
   if (bind(sockfd,
            reinterpret_cast<const struct sockaddr*>(&client_addr),
