@@ -1,4 +1,4 @@
-#include "get_buff_size.hpp"
+#include "get_chunk_size.hpp"
 
 #include<sys/socket.h>
 #include <algorithm>
@@ -8,8 +8,8 @@
 
 #include "config.hpp"
 
-int GetBufsize(int sockfd) {
-  int res = kMaxBufferSize;
+int GetChunkSize(int sockfd) {
+  int res = kMaxChunkSize;
 
   int cur_buf = 0;
   unsigned int mlen = sizeof(cur_buf);

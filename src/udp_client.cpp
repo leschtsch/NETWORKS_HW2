@@ -11,8 +11,6 @@
 #include "config.hpp"
 #include "options.hpp"
 
-static constexpr in_port_t kPort = 8080;
-static constexpr std::size_t kBuffSize = 1LLU << 16LLU;
 
 namespace {
 
@@ -24,11 +22,11 @@ bool DoClient(int sockfd,
     return false;
   }
 
-  if (msg.size() > kBuffSize) {
-    msg.resize(kBuffSize);
+  if (msg.size() > kMaxChunkSize) {
+    msg.resize(kMaxChunkSize);
   }
 
-  static std::array<std::uint8_t, kBuffSize> buff = {};
+  static std::array<std::uint8_t, kMaxChunkSize> buff = {};
 
   std::cout << "send " << msg.size() << " bytes\n";
 
@@ -46,7 +44,7 @@ bool DoClient(int sockfd,
   ssize_t bytes_read =
       recvfrom(sockfd,
                buff.data(),
-               kBuffSize,
+               kMaxChunkSize,
                0,
                reinterpret_cast<struct sockaddr*>(&server_addr),
                &len);

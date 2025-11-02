@@ -11,7 +11,7 @@
 
 namespace {
 void DoServer(int sockfd, std::uint8_t xor_key) {
-  std::array<std::uint8_t, kMaxBufferSize> buff = {};
+  std::array<std::uint8_t, kMaxChunkSize> buff = {};
 
   struct sockaddr_in client_addr;
   socklen_t len = sizeof(client_addr);
@@ -19,7 +19,7 @@ void DoServer(int sockfd, std::uint8_t xor_key) {
   ssize_t bytes_read =
       recvfrom(sockfd,
                buff.data(),
-               kMaxBufferSize,
+               kMaxChunkSize,
                0,
                reinterpret_cast<struct sockaddr*>(&client_addr),
                &len);
@@ -72,6 +72,10 @@ int main(int argc, char* argv[]) {
     std::perror("bind");
     std::exit(-1);
   }
+
+  std::cout << "listening on " << inet_ntoa({options.addr}) << ":"
+            << ntohs(options.port) << " with xor_key "
+            << static_cast<int>(options.xor_key) << "\n";
 
   while (true) {
     DoServer(sockfd, options.xor_key);

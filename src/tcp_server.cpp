@@ -8,18 +8,56 @@
 #include <vector>
 
 #include "config.hpp"
-#include "get_buff_size.hpp"
+#include "get_chunk_size.hpp"
 #include "options.hpp"
 
 namespace {
+
+bool Receive(int sockfd,
+             int bufsiz,
+             int msg_size,
+             std::vector<std::uint8_t>& buff) {
+  int already_read = 0;
+
+  while (already_read < msg_size) {
+    int need_read = std::min(msg_size - already_read, bufsiz);
+    ssize_t bytes_read = recv(sockfd, buff.data() + already_read, need_read, 0);
+    if (bytes_read == 0) {
+      std::cout << "client left\n";
+      return false;
+    }
+
+    already_read += static_cast<int>(bytes_read);
+  }
+
+  std::cout << "recv " << already_read << " bytes\n";
+  return true;
+}
+
+bool Send(int sockfd,
+          int bufsiz,
+          int msg_size,
+          const std::vector<std::uint8_t>& buff) {
+  std::cout << "send " << msg_size << "bytes\n";
+
+  int already_sent = 0;
+  while (already_sent < msg_size) {
+    int need_send = std::min(msg_size - already_sent, bufsiz);
+    if (send(sockfd, buff.data() + already_sent, need_send, 0) < 0) {
+      perror("send");
+      return false;
+    }
+
+    already_sent += need_send;
+  }
+
+  return true;
+}
+
 bool ServerOneMsg(int sockfd, int bufsiz, std::uint8_t xor_key) {
   int msg_size = 0;
   ssize_t bytes_read = recv(sockfd, &msg_size, sizeof(msg_size), 0);
   msg_size = ntohl(msg_size);
-
-  static std::vector<std::uint8_t> buff;
-  buff.clear();
-  buff.resize(msg_size);
 
   if (bytes_read < 0) {
     perror("recv");
@@ -30,43 +68,23 @@ bool ServerOneMsg(int sockfd, int bufsiz, std::uint8_t xor_key) {
     return false;
   }
 
-  int already_read = 0;
+  static std::vector<std::uint8_t> buff;
+  buff.clear();
+  buff.resize(msg_size);
 
-  while (already_read < msg_size) {
-    int need_read = std::min(msg_size - already_read, bufsiz);
-    bytes_read = recv(sockfd, buff.data() + already_read, need_read, 0);
-    if (bytes_read < need_read) {
-      std::cout << "client left\n";
-      return false;
-    }
-
-    already_read += static_cast<int>(bytes_read);
+  if (!Receive(sockfd, bufsiz, msg_size, buff)) {
+    return false;
   }
 
-  std::cout << "recv " << already_read << " bytes\n";
-
-  for (ssize_t i = 0; i < already_read; ++i) {
+  for (ssize_t i = 0; i < msg_size; ++i) {
     buff[i] ^= xor_key;
   }
 
-  std::cout << "send " << already_read << "bytes\n";
-
-  int already_sent = 0;
-  while (already_sent < msg_size) {
-    int need_send = std::min(msg_size - already_sent, bufsiz);
-    if (send(sockfd, buff.data() + already_sent, need_send, 0) < 0) {
-      perror("send");
-      std::exit(-1);
-    }
-
-    already_sent += need_send;
-  }
-
-  return true;
+  return Send(sockfd, bufsiz, msg_size, buff);
 }
 
 void DoServer(int sockfd, std::uint8_t xor_key) {
-  int bufsiz = GetBufsize(sockfd);
+  int bufsiz = GetChunkSize(sockfd);
 
   /*
   if (send(sockfd, buff.data(), 13, 0) < 0) {
@@ -126,7 +144,7 @@ int main(int argc, char* argv[]) {
   }
 
   std::cout << "listening on " << inet_ntoa({options.addr}) << ":"
-            << options.port << " with xor_key "
+            << ntohs(options.port) << " with xor_key "
             << static_cast<int>(options.xor_key) << "\n";
 
   while (int clientfd = accept(lisetnfd, nullptr, nullptr)) {
