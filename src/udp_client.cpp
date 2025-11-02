@@ -2,17 +2,23 @@
 #include <array>
 #include <cassert>
 #include <cerrno>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <string>
 #include <sys/socket.h>
+
+#include "config.hpp"
+#include "options.hpp"
 
 static constexpr in_port_t kPort = 8080;
 static constexpr std::size_t kBuffSize = 1LLU << 16LLU;
 
 namespace {
 
-bool DoClient(int sockfd, struct sockaddr_in& server_addr) {
+bool DoClient(int sockfd,
+              struct sockaddr_in& server_addr,
+              std::uint8_t xor_key) {
   std::string msg;
   if (!(std::cin >> msg)) {
     return false;
@@ -22,7 +28,7 @@ bool DoClient(int sockfd, struct sockaddr_in& server_addr) {
     msg.resize(kBuffSize);
   }
 
-  static std::array<char, kBuffSize> buff = {};
+  static std::array<std::uint8_t, kBuffSize> buff = {};
 
   std::cout << "send " << msg.size() << " bytes\n";
 
@@ -54,14 +60,23 @@ bool DoClient(int sockfd, struct sockaddr_in& server_addr) {
   assert(static_cast<std::size_t>(bytes_read) == msg.size());
 
   for (ssize_t i = 0; i < bytes_read; ++i) {
-    assert((buff[i] ^ static_cast<char>(179)) == msg[i]);
+    if ((buff[i] ^ xor_key) != msg[i]) {
+      std::cout << "incorrect encryption\n";
+      break;
+    }
   }
 
   return true;
 }
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
+  Options options;
+  options.addr = kServerDefaultListenAddr;
+  options.port = kDefaultPort;
+  options.xor_key = kDefaultXorKey;
+  ParseOprions(argc, std::span<char*>(argv, argc), options);
+
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
   if (sockfd < 0) {
@@ -85,8 +100,8 @@ int main() {
 
   struct sockaddr_in server_addr{};
   server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  server_addr.sin_port = htons(kPort);
+  server_addr.sin_addr.s_addr = options.addr;
+  server_addr.sin_port = options.port;
 
   if (bind(sockfd,
            reinterpret_cast<const struct sockaddr*>(&client_addr),
@@ -95,5 +110,5 @@ int main() {
     std::exit(-1);
   }
 
-  while (DoClient(sockfd, server_addr)) {}
+  while (DoClient(sockfd, server_addr, options.xor_key)) {}
 }

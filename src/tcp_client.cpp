@@ -7,39 +7,13 @@
 #include <sys/socket.h>
 #include <vector>
 
-static constexpr in_port_t kPort = 8080;
-static constexpr std::size_t kBuffSize = 1LLU << 16LLU;
+#include "config.hpp"
+#include "get_buff_size.hpp"
+#include "options.hpp"
 
 namespace {
 
-int GetBufsize(int sockfd) {
-  int res = 512;
-  int cur_buf = 0;
-  unsigned int mlen = sizeof(cur_buf);
-  if (getsockopt(sockfd,
-                 SOL_SOCKET,
-                 SO_RCVBUF,
-                 reinterpret_cast<void*>(&cur_buf),
-                 &mlen) < 0) {
-    perror("getsockopt");
-    std::exit(-1);
-  }
-  res = std::min(res, cur_buf);
-  if (getsockopt(sockfd,
-                 SOL_SOCKET,
-                 SO_SNDBUF,
-                 reinterpret_cast<void*>(&cur_buf),
-                 &mlen) < 0) {
-    perror("getsockopt");
-    std::exit(-1);
-  }
-
-  res = std::min(res, cur_buf);
-
-  return res;
-}
-
-bool DoClient(int sockfd) {
+bool DoClient(int sockfd, std::uint8_t xor_key) {
   int bufsiz = GetBufsize(sockfd);
 
   std::string msg;
@@ -47,7 +21,7 @@ bool DoClient(int sockfd) {
     return false;
   }
 
-  static std::vector<char> buff;
+  static std::vector<std::uint8_t> buff;
   buff.clear();
   buff.resize(msg.size());
 
@@ -86,13 +60,16 @@ bool DoClient(int sockfd) {
   std::cout << "recv " << already_read << " bytes\n";
 
   for (ssize_t i = 0; i < already_read; ++i) {
-    assert((buff[i] ^ static_cast<char>(179)) == msg[i]);
+    if ((buff[i] ^ xor_key) != msg[i]) {
+      std::cout << "incorrect encryption\n";
+      break;
+    }
   }
 
   return true;
 }
 
-int Connect() {
+int Connect(const Options& options) {
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
   if (sockfd < 0) {
@@ -102,7 +79,7 @@ int Connect() {
 
   struct sockaddr_in client_addr{};
   client_addr.sin_family = AF_INET;
-  client_addr.sin_addr.s_addr = INADDR_ANY;
+  client_addr.sin_addr.s_addr = htons(INADDR_ANY);
   client_addr.sin_port = 0;
 
   struct timeval timeval;
@@ -116,8 +93,8 @@ int Connect() {
 
   struct sockaddr_in server_addr{};
   server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  server_addr.sin_port = htons(kPort);
+  server_addr.sin_addr.s_addr = options.addr;
+  server_addr.sin_port = options.port;
 
   if (bind(sockfd,
            reinterpret_cast<const struct sockaddr*>(&client_addr),
@@ -137,8 +114,14 @@ int Connect() {
 }
 }  // namespace
 
-int main() {
-  int sockfd = Connect();
+int main(int argc, char* argv[]) {
+  Options options;
+  options.addr = kClientDefaultConnectAddr;
+  options.port = kDefaultPort;
+  options.xor_key = kDefaultXorKey;
+  ParseOprions(argc, std::span<char*>(argv, argc), options);
 
-  while (DoClient(sockfd)) {}
+  int sockfd = Connect(options);
+
+  while (DoClient(sockfd, options.xor_key)) {}
 }

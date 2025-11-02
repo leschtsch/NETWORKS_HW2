@@ -1,48 +1,23 @@
 #include <arpa/inet.h>
 #include <cerrno>
-#include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <span>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <vector>
 
-static constexpr in_port_t kPort = 8080;
+#include "config.hpp"
+#include "get_buff_size.hpp"
+#include "options.hpp"
 
 namespace {
-int GetBufsize(int sockfd) {
-  int res = 512;
-  int cur_buf = 0;
-  unsigned int mlen = sizeof(cur_buf);
-  if (getsockopt(sockfd,
-                 SOL_SOCKET,
-                 SO_RCVBUF,
-                 reinterpret_cast<void*>(&cur_buf),
-                 &mlen) < 0) {
-    perror("getsockopt");
-    std::exit(-1);
-  }
-  res = std::min(res, cur_buf);
-  if (getsockopt(sockfd,
-                 SOL_SOCKET,
-                 SO_SNDBUF,
-                 reinterpret_cast<void*>(&cur_buf),
-                 &mlen) < 0) {
-    perror("getsockopt");
-    std::exit(-1);
-  }
-
-  res = std::min(res, cur_buf);
-
-  return res;
-}
-
-bool ServerOneMsg(int sockfd, int bufsiz) {
+bool ServerOneMsg(int sockfd, int bufsiz, std::uint8_t xor_key) {
   int msg_size = 0;
   ssize_t bytes_read = recv(sockfd, &msg_size, sizeof(msg_size), 0);
   msg_size = ntohl(msg_size);
 
-  static std::vector<char> buff;
+  static std::vector<std::uint8_t> buff;
   buff.clear();
   buff.resize(msg_size);
 
@@ -71,7 +46,7 @@ bool ServerOneMsg(int sockfd, int bufsiz) {
   std::cout << "recv " << already_read << " bytes\n";
 
   for (ssize_t i = 0; i < already_read; ++i) {
-    buff[i] ^= static_cast<char>(179);
+    buff[i] ^= xor_key;
   }
 
   std::cout << "send " << already_read << "bytes\n";
@@ -90,7 +65,7 @@ bool ServerOneMsg(int sockfd, int bufsiz) {
   return true;
 }
 
-void DoServer(int sockfd) {
+void DoServer(int sockfd, std::uint8_t xor_key) {
   int bufsiz = GetBufsize(sockfd);
 
   /*
@@ -103,7 +78,7 @@ void DoServer(int sockfd) {
   ответ.
   */
 
-  while (ServerOneMsg(sockfd, bufsiz)) {}
+  while (ServerOneMsg(sockfd, bufsiz, xor_key)) {}
 
   if (close(sockfd) < 0) {
     perror("close");
@@ -112,18 +87,31 @@ void DoServer(int sockfd) {
 }
 }  // namespace
 
-int main() {
-  int lisetnfd = socket(AF_INET, SOCK_STREAM, 0);
+int main(int argc, char* argv[]) {
+  Options options;
+  options.addr = kServerDefaultListenAddr;
+  options.port = kDefaultPort;
+  options.xor_key = kDefaultXorKey;
+  ParseOprions(argc, std::span<char*>(argv, argc), options);
 
+  int lisetnfd = socket(AF_INET, SOCK_STREAM, 0);
   if (lisetnfd < 0) {
     std::perror("socket");
     std::exit(-1);
   }
 
+  int flag = 1;
+  int status =
+      setsockopt(lisetnfd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
+  if (status < 0) {
+    std::perror("setsockopt");
+    std::exit(-1);
+  }
+
   struct sockaddr_in server_addr{};
   server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = htons(kPort);
+  server_addr.sin_addr.s_addr = options.addr;
+  server_addr.sin_port = options.port;
 
   if (bind(lisetnfd,
            reinterpret_cast<const struct sockaddr*>(&server_addr),
@@ -137,8 +125,12 @@ int main() {
     std::exit(-1);
   }
 
+  std::cout << "listening on " << inet_ntoa({options.addr}) << ":"
+            << options.port << " with xor_key "
+            << static_cast<int>(options.xor_key) << "\n";
+
   while (int clientfd = accept(lisetnfd, nullptr, nullptr)) {
     std::cout << "new client\n";
-    DoServer(clientfd);
+    DoServer(clientfd, options.xor_key);
   }
 }
