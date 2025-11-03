@@ -10,69 +10,29 @@
 #include "config.hpp"
 #include "get_chunk_size.hpp"
 #include "options.hpp"
+#include "tcp_send_receive.hpp"
 
 namespace {
 
-bool Receive(int sockfd,
-             int bufsiz,
-             int msg_size,
-             std::vector<std::uint8_t>& buff) {
-  int already_read = 0;
-
-  while (already_read < msg_size) {
-    int need_read = std::min(msg_size - already_read, bufsiz);
-    ssize_t bytes_read = recv(sockfd, buff.data() + already_read, need_read, 0);
-    if (bytes_read == 0) {
-      std::cout << "client left\n";
-      return false;
-    }
-
-    already_read += static_cast<int>(bytes_read);
+bool ServerOneMsg(int sockfd, std::size_t chunk_size, std::uint8_t xor_key) {
+  std::uint32_t msg_size = 0;
+  std::span<uint8_t> msg_size_span{reinterpret_cast<uint8_t*>(&msg_size),
+                                   sizeof(msg_size)};
+  if (Receive(sockfd, chunk_size, msg_size_span) < sizeof(msg_size)) {
+    std::cout << "something bad happened to the client while transmitting "
+                 "msg_size(\n";
+    return false;
   }
 
-  std::cout << "recv " << already_read << " bytes\n";
-  return true;
-}
-
-bool Send(int sockfd,
-          int bufsiz,
-          int msg_size,
-          const std::vector<std::uint8_t>& buff) {
-  std::cout << "send " << msg_size << "bytes\n";
-
-  int already_sent = 0;
-  while (already_sent < msg_size) {
-    int need_send = std::min(msg_size - already_sent, bufsiz);
-    if (send(sockfd, buff.data() + already_sent, need_send, 0) < 0) {
-      perror("send");
-      return false;
-    }
-
-    already_sent += need_send;
-  }
-
-  return true;
-}
-
-bool ServerOneMsg(int sockfd, int bufsiz, std::uint8_t xor_key) {
-  int msg_size = 0;
-  ssize_t bytes_read = recv(sockfd, &msg_size, sizeof(msg_size), 0);
   msg_size = ntohl(msg_size);
-
-  if (bytes_read < 0) {
-    perror("recv");
-    return false;
-  }
-  if (bytes_read == 0) {
-    std::cout << "client left\n";
-    return false;
-  }
 
   static std::vector<std::uint8_t> buff;
   buff.clear();
   buff.resize(msg_size);
 
-  if (!Receive(sockfd, bufsiz, msg_size, buff)) {
+  if (Receive(sockfd, chunk_size, {buff.data(), msg_size}) < msg_size) {
+    std::cout
+        << "something bad happened to the client while transmitting data(\n";
     return false;
   }
 
@@ -80,26 +40,28 @@ bool ServerOneMsg(int sockfd, int bufsiz, std::uint8_t xor_key) {
     buff[i] ^= xor_key;
   }
 
-  return Send(sockfd, bufsiz, msg_size, buff);
+  std::size_t sent = Send(sockfd, chunk_size, {buff.data(), msg_size});
+
+  if (sent < msg_size) {
+    std::cout << "something bad happened to the client while receiving data(\n";
+    return false;
+  }
+
+  return true;
 }
 
 void DoServer(int sockfd, std::uint8_t xor_key) {
-  int bufsiz = GetChunkSize(sockfd);
+  std::size_t chunk_size = GetChunkSize(sockfd);
 
   /*
-  if (send(sockfd, buff.data(), 13, 0) < 0) {
-    perror("send");
-    std::exit(-1);
-  }
-
   Здесь можно было бы что-то отправить, если бы клиент не ожидал определенный
   ответ.
   */
 
-  while (ServerOneMsg(sockfd, bufsiz, xor_key)) {}
+  while (ServerOneMsg(sockfd, chunk_size, xor_key)) {}
 
   if (close(sockfd) < 0) {
-    perror("close");
+    std::perror("close");
     std::exit(-1);
   }
 }

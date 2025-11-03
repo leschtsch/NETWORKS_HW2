@@ -37,7 +37,7 @@ bool DoClient(int sockfd,
              0,
              reinterpret_cast<const struct sockaddr*>(&server_addr),
              len) < 0) {
-    perror("send");
+    std::perror("send");
     std::exit(-1);
   }
 
@@ -51,7 +51,7 @@ bool DoClient(int sockfd,
   std::cout << "recv " << bytes_read << " bytes\n";
 
   if (bytes_read < 0) {
-    perror("recv");
+    std::perror("recv");
     return false;
   }
 

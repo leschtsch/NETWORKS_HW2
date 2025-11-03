@@ -26,7 +26,7 @@ void DoServer(int sockfd, std::uint8_t xor_key) {
   std::cout << "recv " << bytes_read << " bytes\n";
 
   if (bytes_read < 0) {
-    perror("recv");
+    std::perror("recv");
     return;
   }
 
@@ -41,7 +41,7 @@ void DoServer(int sockfd, std::uint8_t xor_key) {
              0,
              reinterpret_cast<const struct sockaddr*>(&client_addr),
              len) < 0) {
-    perror("send");
+    std::perror("send");
     std::exit(-1);
   }
 }

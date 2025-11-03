@@ -8,7 +8,7 @@
 
 #include "config.hpp"
 
-int GetChunkSize(int sockfd) {
+std::size_t GetChunkSize(int sockfd) {
   int res = kMaxChunkSize;
 
   int cur_buf = 0;
@@ -30,7 +30,7 @@ int GetChunkSize(int sockfd) {
                  SO_SNDBUF,
                  reinterpret_cast<void*>(&cur_buf),
                  &mlen) < 0) {
-    perror("getsockopt");
+    std::perror("getsockopt");
     std::exit(-1);
   }
 

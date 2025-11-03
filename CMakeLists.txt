@@ -13,11 +13,12 @@ ADD_LIBRARY(options STATIC src/options.cpp)
 LINK_LIBRARIES(options)
 
 ADD_LIBRARY(get_chunk_size STATIC src/get_chunk_size.cpp)
+ADD_LIBRARY(tcp_send_receive STATIC src/tcp_send_receive.cpp)
 
 ADD_EXECUTABLE(tcp_server src/tcp_server.cpp)
-TARGET_LINK_LIBRARIES(tcp_server PRIVATE get_chunk_size)
+TARGET_LINK_LIBRARIES(tcp_server PRIVATE get_chunk_size tcp_send_receive)
 ADD_EXECUTABLE(tcp_client src/tcp_client.cpp)
-TARGET_LINK_LIBRARIES(tcp_client PRIVATE get_chunk_size)
+TARGET_LINK_LIBRARIES(tcp_client PRIVATE get_chunk_size tcp_send_receive)
 
 
 ADD_EXECUTABLE(udp_server src/udp_server.cpp)
