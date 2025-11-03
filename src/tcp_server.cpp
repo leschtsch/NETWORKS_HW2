@@ -19,8 +19,7 @@ bool ServerOneMsg(int sockfd, std::size_t chunk_size, std::uint8_t xor_key) {
   std::span<uint8_t> msg_size_span{reinterpret_cast<uint8_t*>(&msg_size),
                                    sizeof(msg_size)};
   if (Receive(sockfd, chunk_size, msg_size_span) < sizeof(msg_size)) {
-    std::cout << "something bad happened to the client while transmitting "
-                 "msg_size(\n";
+    std::cout << "client left?\n";
     return false;
   }
 
